@@ -20,6 +20,7 @@ class Env(gym.Env):
         self.action_space = spaces.Tuple((spaces.Discrete(self.width), spaces.Discrete(self.height)))
         self.board = [["0" for x in range(self.height)] for y in range(self.height)]
         self._randomize_board(random_seed)
+        self.possible_moves = list()
 
     def _randomize_board(self, random_seed):
         random.seed(random_seed)
@@ -34,16 +35,69 @@ class Env(gym.Env):
             col_str = col_str.replace('0', '')
             col_str = col_str.ljust(self.width, '0')
             self.board[x] = list(col_str)
+        # collapse left if column is empty
+        x = 0
+        while x < self.width:
+            if all(elem == "0" for elem in self.board[x]):
+                col = self.board.pop(x)
+                self.board[self.width - 1] = col
+                x -= 1
+            x += 1 
 
     def _is_board_empty(self):
-
+        return all([all(elem == "0" for elem in col) for col in self.board])
 
     def _is_game_over(self):
-        return False
+        for x in range(self.width):
+            for y in range(self.height):
+                color = self.board[x][y]
+                if color is "0":
+                    break
+                # check above
+                if y + 1 < self.height and self.board[x][y+1] == color:
+                    return False
+                # check right
+                if x + 1 < self.width and self.board[x+1][y] == color:
+                    return False 
+        return True
+
+    def _aggregate(self, key, adj_dict):
+        l = list()
+        if key in adj_dict:
+            for elem in adj_dict[key]:
+                l.append(elem)
+                l += self._aggregate(elem, adj_dict)
+        return l
+
+    def get_possible_moves(self):
+        adj_dict = dict()
+        for x in range(self.width):
+            for y in range(self.height):
+                color = self.board[x][y]
+                if color is "0":
+                    break
+                # check above
+                if y + 1 < self.height and self.board[x][y+1] == color:
+                    if (x, y) not in adj_dict:
+                        adj_dict[(x, y)] = list()
+                    adj_dict[(x,y)].append((x, y+1)) 
+                # check right
+                if x + 1 < self.width and self.board[x+1][y] == color:
+                    if (x, y) not in adj_dict:
+                        adj_dict[(x, y)] = list()
+                    adj_dict[(x,y)].append((x+1, y))
+        moves = list()
+        covered = set()
+        for key in adj_dict:
+            if key not in covered:
+                l = [key] + self._aggregate(key, adj_dict)
+                for elem in l:
+                    covered.add(elem)
+                moves.append(l)
+        return [elem[0] for elem in moves]
 
     def step(self, action):
         """Take an action in the environment
-
         Args:
             self: this object
             action: an (x, y) integer tuple specifying the board position to play
